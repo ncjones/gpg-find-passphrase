@@ -1,0 +1,96 @@
+#!/bin/bash
+
+#  GPG Find Passphrase
+#  Copyright (C) 2015  Nathan Jones
+#
+#  This program is free software: you can redistribute it and/or modify
+#  it under the terms of the GNU General Public License as published by
+#  the Free Software Foundation, either version 3 of the License, or
+#  (at your option) any later version.
+#
+#  This program is distributed in the hope that it will be useful,
+#  but WITHOUT ANY WARRANTY; without even the implied warranty of
+#  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#  GNU General Public License for more details.
+#
+#  You should have received a copy of the GNU General Public License
+#  along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+set -e
+
+function show_usage() {
+  echo "Usage: $0 [-d|--debug] [-h|--help] <user>"
+}
+
+function show_help() {
+  echo "
+  GPG Find Passphrase
+
+  Copyright 2015 Nathan Jones
+
+  Print the first line that is a valid GPG paspassphrase.  Lines are read from
+  stdin.  Passphrases are checked against the given GPG user.
+
+    `show_usage`
+
+  Where <user> can be resolved to a unique GPG user.
+  "
+}
+
+while [[ $# > 0 ]]; do
+  key="$1"
+  case $key in
+    -d|--debug)
+      debug=true
+      ;;
+    -h|--help)
+      help=true
+      ;;
+    *)
+      user=$key
+      break
+      ;;
+  esac
+  shift
+done
+
+function resolve_gpg_user() {
+  gpg --list-keys $1 2> /dev/null |
+    grep '^uid' |
+    head -n 1 |
+    sed 's/^uid *//'
+}
+
+function check_passphrase() {
+  user=$1
+  passphrase=$2
+  gpg --batch --no-tty \
+    -u $user \
+    --passphrase-fd 0 \
+    --sign \
+    &> /dev/null < <(echo $passphrase)
+}
+
+if [ "$help" = true ]; then
+  show_help
+  exit
+fi
+
+if [ -z "$user" ]; then
+  show_usage
+  exit 1
+fi
+
+resolved_user=`resolve_gpg_user $user`
+if [ -z "$resolved_user" ]; then
+  echo "No GPG user matching: '$user'"
+  exit 1
+elif [ "$debug" = true ]; then
+  echo "GPG user: $resolved_user"
+fi
+
+while read passphrase; do
+  check_passphrase $user $passphrase &&
+    echo "$passphrase" &&
+    break
+done
